@@ -16,31 +16,31 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class TicketService {
     private static final EnumSet<TicketStatus> ACTIVE_STATUSES = EnumSet.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.AWAITING_RESPONSE);
     private final DataStore dataStore;
-    private int ticketSeq = 1;
 
     public TicketService(DataStore dataStore) {
         this.dataStore = dataStore;
     }
 
     public Ticket createTicket(User requester, String title, String description, String category) {
-        int id = ticketSeq++;
-        Ticket ticket = new Ticket(id, requester, title, description, category, LocalDateTime.now());
-        dataStore.getTickets().add(ticket);
+        Ticket ticket = dataStore.createTicket(requester, title, description, category, LocalDateTime.now());
         logHistory(ticket, "Ticket raised", requester.getName());
         assignAgent(ticket, "System assignment");
         ticket.setStatus(TicketStatus.OPEN);
         ticket.setUpdatedAt(LocalDateTime.now());
+        dataStore.updateTicket(ticket);
         return ticket;
     }
 
     private void logHistory(Ticket ticket, String action, String actor) {
-        ticket.getHistory().add(new TicketHistoryEntry(LocalDateTime.now(), action, actor));
+        TicketHistoryEntry entry = new TicketHistoryEntry(LocalDateTime.now(), action, actor);
+        ticket.getHistory().add(entry);
+        dataStore.addHistory(ticket.getId(), entry);
     }
 
     private long activeLoad(User agent) {
@@ -51,7 +51,7 @@ public class TicketService {
     }
 
     public void assignAgent(Ticket ticket, String actor) {
-        List<User> agents = dataStore.getUsers().values().stream()
+        List<User> agents = dataStore.getAllUsers().stream()
                 .filter(u -> u.getRole() == Role.AGENT)
                 .sorted(Comparator.comparingInt(User::getId))
                 .collect(Collectors.toList());
@@ -60,6 +60,7 @@ public class TicketService {
         chosen.ifPresent(agent -> {
             ticket.setAssignedAgent(agent);
             logHistory(ticket, "Assigned to agent " + agent.getName(), actor);
+            dataStore.updateTicket(ticket);
         });
     }
 
@@ -88,6 +89,7 @@ public class TicketService {
         ticket.setDescription(newDescription);
         ticket.setUpdatedAt(LocalDateTime.now());
         logHistory(ticket, "Description updated", user.getName());
+        dataStore.updateTicket(ticket);
     }
 
     public void updateStatus(User actor, int ticketId, TicketStatus newStatus) {
@@ -101,6 +103,7 @@ public class TicketService {
         ticket.setStatus(newStatus);
         ticket.setUpdatedAt(LocalDateTime.now());
         logHistory(ticket, "Status changed to " + newStatus, actor.getName());
+        dataStore.updateTicket(ticket);
     }
 
     public void closeOrAwait(User actor, int ticketId, boolean confirmClose, String awaitMessage) {
@@ -111,6 +114,7 @@ public class TicketService {
             ticket.setStatus(TicketStatus.AWAITING_RESPONSE);
             ticket.setUpdatedAt(LocalDateTime.now());
             logHistory(ticket, "Moved to awaiting response: " + awaitMessage, actor.getName());
+            dataStore.updateTicket(ticket);
         }
     }
 
@@ -119,6 +123,7 @@ public class TicketService {
         ticket.setStatus(TicketStatus.REOPENED);
         ticket.setUpdatedAt(LocalDateTime.now());
         logHistory(ticket, "Reopened: " + reason, actor.getName());
+        dataStore.updateTicket(ticket);
     }
 
     public void addNote(User actor, int ticketId, String message) {
@@ -129,6 +134,9 @@ public class TicketService {
         if (actor.getRole() == Role.USER || actor.getRole() == Role.AGENT || actor.getRole() == Role.ADMIN) {
             ticket.getNotes().add(new Note(actor.getId(), actor.getName(), message, LocalDateTime.now()));
             logHistory(ticket, "Note added", actor.getName());
+            Note latest = ticket.getNotes().get(ticket.getNotes().size() - 1);
+            dataStore.addNote(ticketId, latest);
+            dataStore.updateTicket(ticket);
         }
     }
 
@@ -145,6 +153,7 @@ public class TicketService {
             ticket.setAgentFlagged(true);
         }
         logHistory(ticket, "Rated with score " + rating, user.getName());
+        dataStore.updateTicket(ticket);
     }
 
     public void reassign(User admin, int ticketId, User newAgent, String reason) {
@@ -155,6 +164,7 @@ public class TicketService {
         ticket.setAssignedAgent(newAgent);
         ticket.setUpdatedAt(LocalDateTime.now());
         logHistory(ticket, "Reassigned to " + newAgent.getName() + " reason: " + reason, admin.getName());
+        dataStore.updateTicket(ticket);
     }
 
     public List<Ticket> search(TicketStatus status, LocalDate from, LocalDate to) {
@@ -190,9 +200,7 @@ public class TicketService {
     }
 
     public Ticket findTicket(int id) {
-        return dataStore.getTickets().stream()
-                .filter(t -> t.getId() == id)
-                .findFirst()
+        return dataStore.findTicket(id)
                 .orElseThrow(() -> new IllegalArgumentException("Ticket not found"));
     }
 }
