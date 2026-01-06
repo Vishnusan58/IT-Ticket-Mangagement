@@ -16,25 +16,25 @@ public class UserService {
 
     public User createUser(int id, String name, Role role) {
         User user = new User(id, name, role);
-        dataStore.getUsers().put(id, user);
+        dataStore.saveUser(user);
         return user;
     }
 
     public Optional<User> findUser(int id) {
-        return Optional.ofNullable(dataStore.getUsers().get(id));
+        return dataStore.findUser(id);
     }
 
     public Collection<User> getAll() {
-        return dataStore.getUsers().values();
+        return dataStore.getAllUsers();
     }
 
     public void changeRole(User admin, int userId, Role newRole) {
         if (admin.getRole() != Role.ADMIN) {
             throw new IllegalStateException("Only admins can change roles");
         }
-        User target = dataStore.getUsers().get(userId);
-        if (target != null) {
+        dataStore.findUser(userId).ifPresent(target -> {
             target.setRole(newRole);
-        }
+            dataStore.saveUser(target);
+        });
     }
 }
