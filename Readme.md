@@ -113,10 +113,15 @@ Ticket 1 [OPEN] Laptop issue assigned:AgentOne rating:null
 ...
 ```
 
-### How to Compile and Run
+### How to Compile and Run (plain Java + SQLite JDBC)
+Download the [SQLite JDBC driver](https://github.com/xerial/sqlite-jdbc) JAR and place it in a `lib` folder next to `src`.
+
 ```bash
-javac -d out $(find src -name "*.java")
-java -cp out com.ittm.ui.ConsoleApp
+# compile all sources with the driver on the classpath
+javac -cp "lib/sqlite-jdbc.jar" -d out $(find src -name "*.java")
+
+# run the console app (adds both compiled classes and driver to the classpath)
+java -cp "out:lib/sqlite-jdbc.jar" com.ittm.ui.ConsoleApp
 ```
 
 
