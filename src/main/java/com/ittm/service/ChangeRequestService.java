@@ -13,16 +13,13 @@ import java.util.stream.Collectors;
 
 public class ChangeRequestService {
     private final DataStore dataStore;
-    private int changeSeq = 1;
 
     public ChangeRequestService(DataStore dataStore) {
         this.dataStore = dataStore;
     }
 
     public ChangeRequest raise(User requester, String title, String description, LocalDate expiry) {
-        ChangeRequest request = new ChangeRequest(changeSeq++, requester, title, description, expiry, LocalDateTime.now());
-        dataStore.getChangeRequests().add(request);
-        return request;
+        return dataStore.createChangeRequest(requester, title, description, expiry, LocalDateTime.now());
     }
 
     public void renew(User actor, int changeId, LocalDate newExpiry) {
@@ -31,6 +28,7 @@ public class ChangeRequestService {
             throw new IllegalStateException("Only admin or requester can renew");
         }
         cr.setExpiryDate(newExpiry);
+        dataStore.updateChangeRequest(cr);
     }
 
     public void remove(User actor, int changeId) {
@@ -38,7 +36,7 @@ public class ChangeRequestService {
         if (actor.getRole() != Role.ADMIN && actor.getId() != cr.getRequester().getId()) {
             throw new IllegalStateException("Only admin or requester can remove");
         }
-        dataStore.getChangeRequests().remove(cr);
+        dataStore.removeChangeRequest(changeId);
     }
 
     public void approve(User admin, int changeId, boolean approve) {
@@ -47,6 +45,7 @@ public class ChangeRequestService {
         }
         ChangeRequest cr = findChange(changeId);
         cr.setStatus(approve ? ChangeRequestStatus.APPROVED : ChangeRequestStatus.REJECTED);
+        dataStore.updateChangeRequest(cr);
     }
 
     public void implement(User agent, int changeId, String implementationNote) {
@@ -59,6 +58,7 @@ public class ChangeRequestService {
         }
         cr.setImplementationNote(implementationNote);
         cr.setStatus(ChangeRequestStatus.IMPLEMENTED);
+        dataStore.updateChangeRequest(cr);
     }
 
     public List<ChangeRequest> expiringWithin(int days) {
@@ -83,15 +83,12 @@ public class ChangeRequestService {
         toArchive.forEach(cr -> {
             cr.setArchived(true);
             cr.setStatus(ChangeRequestStatus.ARCHIVED);
-            dataStore.getArchivedChanges().add(cr);
+            dataStore.updateChangeRequest(cr);
         });
-        dataStore.getChangeRequests().removeAll(toArchive);
     }
 
     private ChangeRequest findChange(int id) {
-        return dataStore.getChangeRequests().stream()
-                .filter(cr -> cr.getId() == id)
-                .findFirst()
+        return dataStore.findChangeRequest(id)
                 .orElseThrow(() -> new IllegalArgumentException("Change request not found"));
     }
 }
